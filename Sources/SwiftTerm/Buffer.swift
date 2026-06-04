@@ -401,8 +401,23 @@ public final class Buffer {
         }
     }
     
+    // iVibecode fork change: disable on-resize reflow.
+    //
+    // Upstream returns `hasScrollback`, which means the MAIN screen (it always
+    // has scrollback) gets its already-printed lines re-wrapped whenever the
+    // terminal width changes. Real terminals (xterm, Apple Terminal, iTerm2) do
+    // NOT re-wrap the main screen on resize. Full-screen-style TUIs — Claude
+    // Code, vim, tmux — repaint on SIGWINCH assuming the terminal leaves prior
+    // lines exactly where they are; SwiftTerm's reflow violated that assumption
+    // and the program's repaint landed in the wrong place, producing the
+    // duplicated / overlapping lines iVibecode showed when a window was resized.
+    //
+    // Returning false makes resize behave like every standard terminal (long
+    // lines are clipped at the right edge rather than re-wrapped) and fixes the
+    // corruption at its source. The alt screen already had reflow off (no
+    // scrollback), so this only changes the main-screen behavior.
     public var isReflowEnabled: Bool {
-        return hasScrollback
+        return false
     }
     
     public func resize (newCols : Int, newRows : Int)
