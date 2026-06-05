@@ -584,11 +584,22 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     
     open func linefeed(source: Terminal) {
         // Preserve manual selection while output is streaming when mouse reporting is disabled.
-        if allowMouseReporting {
+        // Also preserve it when the host opts in via preserveSelectionDuringStreaming (e.g.
+        // iVibecode viewing a live remote session whose status bar keeps redrawing).
+        if allowMouseReporting && !preserveSelectionDuringStreaming {
             selection.selectNone()
         }
     }
-    
+
+    /// When true, streaming output (each linefeed) does NOT clear an active manual
+    /// text selection, even while the running program has mouse reporting enabled.
+    /// Hosts like iVibecode set this so a user can select and copy text from a live
+    /// remote session whose status bar keeps ticking, instead of the selection being
+    /// wiped on every redraw. Safe because the selection is stored in buffer-absolute
+    /// coordinates, so the highlight tracks the same text as it scrolls rather than
+    /// drifting onto different text. Defaults to false to preserve upstream behavior.
+    public var preserveSelectionDuringStreaming: Bool = false
+
     /// This vaiable controls whether mouse events are sent to the application running under the
     /// terminal if it has requested the data.   This poses a problem for selection, so users
     /// need a way of toggling this behavior.
