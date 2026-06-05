@@ -318,4 +318,42 @@ final class SelectionTests: TerminalDelegate {
         #expect(selection.start.col == 3)
         #expect(selection.end.col == 3)
     }
+
+#if os(macOS)
+    /// A line of streaming output (the terminal's `linefeed` delegate callback)
+    /// must NOT clear an active manual selection when the host opted in via
+    /// preserveSelectionDuringStreaming — even with mouse reporting on. This is
+    /// the iVibecode "I can't select text while the status bar keeps ticking"
+    /// fix: without it, every line of streaming output wipes the selection.
+    @Test func testLinefeedPreservesSelectionWhenFlagSet() {
+        let view = TerminalView(frame: CGRect(origin: .zero, size: .init(width: 200, height: 100)))
+        view.allowMouseReporting = true
+        view.preserveSelectionDuringStreaming = true
+        view.terminal.feed(text: "hello world")
+        view.selection.setSelection(start: Position(col: 0, row: 0), end: Position(col: 5, row: 0))
+        #expect(view.selection.active == true)
+
+        // Simulate one line of streaming output arriving.
+        view.linefeed(source: view.terminal)
+
+        #expect(view.selection.active == true)
+    }
+
+    /// The inverse, to prove the guard is real and the default is unchanged:
+    /// with the flag off (default) and mouse reporting on, a linefeed DOES clear
+    /// the selection (upstream behavior). If this ever reads active == true, the
+    /// default behavior changed by accident.
+    @Test func testLinefeedClearsSelectionByDefaultWithMouseReporting() {
+        let view = TerminalView(frame: CGRect(origin: .zero, size: .init(width: 200, height: 100)))
+        view.allowMouseReporting = true
+        // preserveSelectionDuringStreaming defaults to false.
+        view.terminal.feed(text: "hello world")
+        view.selection.setSelection(start: Position(col: 0, row: 0), end: Position(col: 5, row: 0))
+        #expect(view.selection.active == true)
+
+        view.linefeed(source: view.terminal)
+
+        #expect(view.selection.active == false)
+    }
+#endif
 }
