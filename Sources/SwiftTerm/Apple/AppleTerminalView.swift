@@ -167,6 +167,14 @@ extension TerminalView {
     {
         return terminal
     }
+
+    /// The host channel generation currently bound to this renderer. Hosts
+    /// normally set this when installing a channel; `feed(..., generation:)`
+    /// snapshots a supplied incoming generation before parsing its bytes.
+    public var outboundGeneration: UInt64 {
+        get { terminal.outboundGeneration }
+        set { terminal.outboundGeneration = newValue }
+    }
     
     /// This function computes the new columns and rows for the terminal when a pixel-size changes
     /// Returns true if this changed the number of columns/rows, false otherwise
@@ -1915,7 +1923,16 @@ extension TerminalView {
     /// Sends data to the terminal emulator for interpretation, this can be invoked from a background thread
     public func feed (byteArray: ArraySlice<UInt8>)
     {
+        feed(byteArray: byteArray, generation: terminal.outboundGeneration)
+    }
+
+    /// Feeds remote bytes while binding any emulator-generated response to the
+    /// generation that delivered those bytes. This is deliberately at the
+    /// parser boundary rather than at a later delegate callback.
+    public func feed(byteArray: ArraySlice<UInt8>, generation: UInt64)
+    {
         feedPrepare()
+        terminal.outboundGeneration = generation
         terminal.feed (buffer: byteArray)
         feedFinish()
     }
@@ -1923,7 +1940,13 @@ extension TerminalView {
     /// Sends data to the terminal emulator for interpretation, this can be invoked from a background thread
     public func feed (text: String)
     {
+        feed(text: text, generation: terminal.outboundGeneration)
+    }
+
+    public func feed(text: String, generation: UInt64)
+    {
         feedPrepare()
+        terminal.outboundGeneration = generation
         terminal.feed (text: text)
         feedFinish()
     }
@@ -1979,7 +2002,13 @@ extension TerminalView {
             TerminalView.textInputLogCounter += 1
         }
         #endif
-        terminalDelegate?.send (source: self, data: data)
+        terminalDelegate?.send(
+            source: self,
+            outbound: TerminalOutboundEvent(
+                generation: terminal.outboundGeneration,
+                segments: [TerminalOutboundSegment(origin: .userInput, bytes: Array(data))]
+            )
+        )
     }
     
     /**

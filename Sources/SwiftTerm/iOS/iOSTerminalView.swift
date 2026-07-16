@@ -1281,6 +1281,10 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     open func send(source: Terminal, data: ArraySlice<UInt8>) {
         terminalDelegate?.send (source: self, data: data)
     }
+
+    open func send(source: Terminal, outbound: TerminalOutboundEvent) {
+        terminalDelegate?.send(source: self, outbound: outbound)
+    }
     
     /**
      * Given the current set of columns and rows returns a frame that would host this control.

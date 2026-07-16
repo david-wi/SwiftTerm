@@ -558,6 +558,10 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     open func send(source: Terminal, data: ArraySlice<UInt8>) {
         terminalDelegate?.send (source: self, data: data)
     }
+
+    open func send(source: Terminal, outbound: TerminalOutboundEvent) {
+        terminalDelegate?.send(source: self, outbound: outbound)
+    }
         
     private var scrollerWidth: CGFloat {
         NSScroller.scrollerWidth(for: .regular, scrollerStyle: scrollerStyle)

@@ -73,6 +73,12 @@ public protocol TerminalDelegate: AnyObject {
      * documentation, this is the "host")
      */
     func send (source: Terminal, data: ArraySlice<UInt8>)
+
+    /// Sends source-proven terminal output. Existing delegates only need to
+    /// implement `send(source:data:)`; the default below preserves that legacy
+    /// behavior while newer hosts can make policy decisions without guessing
+    /// from byte shape.
+    func send(source: Terminal, outbound: TerminalOutboundEvent)
     
     // callbacks
     
@@ -405,6 +411,10 @@ open class Terminal {
     var gcharset: Int = 0
     var reverseWraparound: Bool = false
     weak var tdel: TerminalDelegate?
+    /// Bound by the host before bytes enter the emulator. Generated replies
+    /// snapshot this value at their creation point, so an old parser callback
+    /// can never be relabelled as a replacement channel later.
+    public var outboundGeneration: UInt64 = 0
     private var curAttr: Attribute = CharData.defaultAttr
     private var charToIndexMap: [Character:Int32] = [:]
     private var indexToCharMap: [Int32: Character] = [:]
@@ -560,7 +570,7 @@ open class Terminal {
     public func setTerminalFocus(_ focused: Bool) {
         if sendFocus {
             let data: [UInt8] = cc.CSI + [focused ? 0x49 : 0x4f]
-            tdel?.send(source: self, data: data[0...])
+            sendEmulatorGeneratedReply(data)
         }
     }
     
@@ -4830,7 +4840,7 @@ open class Terminal {
      */
     public func sendResponse (text: String)
     {
-        tdel?.send (source: self, data: ([UInt8] (text.utf8))[...])
+        sendEmulatorGeneratedReply([UInt8](text.utf8))
     }
     
     /**
@@ -4852,7 +4862,17 @@ open class Terminal {
                 log ("Do not know how to handle type \(item)")
             }
         }
-        tdel?.send (source: self, data: buffer[...])
+        sendEmulatorGeneratedReply(buffer)
+    }
+
+    private func sendEmulatorGeneratedReply(_ bytes: [UInt8]) {
+        tdel?.send(
+            source: self,
+            outbound: TerminalOutboundEvent(
+                generation: outboundGeneration,
+                segments: [TerminalOutboundSegment(origin: .emulatorGeneratedReply, bytes: bytes)]
+            )
+        )
     }
     
 #if DEBUG
@@ -6633,6 +6653,15 @@ open class Terminal {
 
 // Default implementations
 public extension TerminalDelegate {
+    func send(source: Terminal, outbound: TerminalOutboundEvent) {
+        // Compatibility: existing hosts retain the original raw-byte callback.
+        // They receive all segments in order; provenance-aware hosts override
+        // this requirement to apply their own policy.
+        for segment in outbound.segments {
+            send(source: source, data: segment.bytes[...])
+        }
+    }
+
     func cursorStyleChanged (source: Terminal, newStyle: CursorStyle)
     {
         // Do nothing
