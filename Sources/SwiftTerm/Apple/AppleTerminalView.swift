@@ -193,6 +193,14 @@ extension TerminalView {
     {
         return terminal
     }
+
+    /// The host channel generation currently bound to this renderer. Hosts
+    /// normally set this when installing a channel; `feed(..., generation:)`
+    /// snapshots a supplied incoming generation before parsing its bytes.
+    public var outboundGeneration: UInt64 {
+        get { terminal.outboundGeneration }
+        set { terminal.outboundGeneration = newValue }
+    }
     
     /// This function computes the new columns and rows for the terminal when a pixel-size changes
     /// Returns true if this changed the number of columns/rows, false otherwise
@@ -1995,7 +2003,16 @@ extension TerminalView {
     /// Sends data to the terminal emulator for interpretation, this can be invoked from a background thread
     public func feed (byteArray: ArraySlice<UInt8>)
     {
+        feed(byteArray: byteArray, generation: terminal.outboundGeneration)
+    }
+
+    /// Feeds remote bytes while binding any emulator-generated response to the
+    /// generation that delivered those bytes. This is deliberately at the
+    /// parser boundary rather than at a later delegate callback.
+    public func feed(byteArray: ArraySlice<UInt8>, generation: UInt64)
+    {
         feedPrepare()
+        terminal.outboundGeneration = generation
         terminal.feed (buffer: byteArray)
         feedFinish()
     }
@@ -2003,7 +2020,13 @@ extension TerminalView {
     /// Sends data to the terminal emulator for interpretation, this can be invoked from a background thread
     public func feed (text: String)
     {
+        feed(text: text, generation: terminal.outboundGeneration)
+    }
+
+    public func feed(text: String, generation: UInt64)
+    {
         feedPrepare()
+        terminal.outboundGeneration = generation
         terminal.feed (text: text)
         feedFinish()
     }
@@ -2037,7 +2060,21 @@ extension TerminalView {
      */
     public func send(data: ArraySlice<UInt8>)
     {
-        ensureCaretIsVisible ()
+        // Follow the caret to the live tail on user input ONLY when the viewport
+        // is already at (or a hair off) the bottom. If the reader has scrolled up
+        // into history to read something, typing must NOT yank them back down —
+        // real terminals (xterm, Terminal.app, iTerm2) leave a scrolled-up reader
+        // where they are and let the program repaint. The threshold and canScroll
+        // guard mirror the host app's TerminalAutoScroll.isPinnedToBottom so the
+        // input-driven jump and the output-driven jump agree. The echo that comes
+        // back is preserved separately by the host's feedPreservingScrollPosition
+        // wrapper; this governs only the synchronous input-driven jump. In the
+        // alternate screen (full-screen TUIs) canScroll is false, so this stays
+        // true and the caret is always followed — correct, since there is no
+        // scrollback to read there.
+        if !canScroll || scrollPosition >= 0.999 {
+            ensureCaretIsVisible ()
+        }
         #if os(iOS) || os(visionOS)
         if TerminalView.textInputDebugEnabled {
             let previewBytes = data.prefix(32).map { String(format: "%02X", $0) }.joined(separator: " ")
@@ -2045,7 +2082,13 @@ extension TerminalView {
             TerminalView.textInputLogCounter += 1
         }
         #endif
-        terminalDelegate?.send (source: self, data: data)
+        terminalDelegate?.send(
+            source: self,
+            outbound: TerminalOutboundEvent(
+                generation: terminal.outboundGeneration,
+                segments: [TerminalOutboundSegment(origin: .userInput, bytes: Array(data))]
+            )
+        )
     }
     
     /**

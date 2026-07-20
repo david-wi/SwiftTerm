@@ -35,6 +35,10 @@ public protocol TerminalViewDelegate: AnyObject {
      * - Parameter data: Slice of data that should be sent
      */
     func send (source: TerminalView, data: ArraySlice<UInt8>)
+
+    /// Source-proven outbound terminal bytes. Existing delegates remain
+    /// compatible through the default implementation below.
+    func send(source: TerminalView, outbound: TerminalOutboundEvent)
   
     /**
      * Invoked when the terminal has been scrolled and the new position is provided
@@ -103,5 +107,13 @@ public protocol TerminalViewDelegate: AnyObject {
      */
     func rangeChanged (source: TerminalView, startY: Int, endY: Int)
 
+}
+
+public extension TerminalViewDelegate {
+    func send(source: TerminalView, outbound: TerminalOutboundEvent) {
+        for segment in outbound.segments {
+            send(source: source, data: segment.bytes[...])
+        }
+    }
 }
 #endif
