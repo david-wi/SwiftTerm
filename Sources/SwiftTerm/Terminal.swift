@@ -414,7 +414,15 @@ open class Terminal {
     /// Bound by the host before bytes enter the emulator. Generated replies
     /// snapshot this value at their creation point, so an old parser callback
     /// can never be relabelled as a replacement channel later.
-    public var outboundGeneration: UInt64 = 0
+    public var outboundGeneration: UInt64 = 0 {
+        didSet {
+            guard outboundGeneration != oldValue else { return }
+            // WHY: EscapeSequenceParser intentionally retains partial CSI/OSC/DCS
+            // state across feed calls. A replacement host channel must not finish
+            // a control query that began on the channel it replaced.
+            parser.reset()
+        }
+    }
     private var curAttr: Attribute = CharData.defaultAttr
     private var charToIndexMap: [Character:Int32] = [:]
     private var indexToCharMap: [Int32: Character] = [:]
