@@ -61,6 +61,24 @@ final class TerminalOutboundEventTests {
         #expect(delegate.events.isEmpty)
     }
 
+    @Test func generationReplacementDiscardsIncompleteStringQueries() {
+        let cases: [([UInt8], String)] = [
+            ([0x1B, 0x5D], "11;?\u{07}"), // OSC background-color query.
+            ([0x1B, 0x50], "$qm\u{1B}\\"), // DCS DECRQSS query.
+        ]
+
+        for (prefix, suffix) in cases {
+            let delegate = ProvenanceDelegate()
+            let terminal = Terminal(delegate: delegate, options: TerminalOptions(cols: 80, rows: 24, scrollback: 0))
+            terminal.outboundGeneration = 7
+            terminal.feed(byteArray: prefix)
+            terminal.outboundGeneration = 8
+            terminal.feed(text: suffix)
+
+            #expect(delegate.events.isEmpty)
+        }
+    }
+
     @Test func mixedEventPreservesSegmentOriginsAndGeneration() {
         let event = TerminalOutboundEvent(
             generation: 23,
